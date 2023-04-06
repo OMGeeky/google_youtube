@@ -1,3 +1,4 @@
+use log::{debug, error, info, trace, warn};
 use std::default::Default;
 use std::error::Error;
 use std::path::{Path, PathBuf};
@@ -173,7 +174,7 @@ impl YoutubeClient {
         tags: V,
         privacy_status: PrivacyStatus,
     ) -> Result<Video, Box<dyn Error>> {
-        println!("test 123");
+        info!("test 123");
         let video = Video {
             snippet: Some(VideoSnippet {
                 title: Some(title.into()),
@@ -208,21 +209,21 @@ impl YoutubeClient {
             client: &YouTube<HttpsConnector<HttpConnector>>,
             para: &UploadParameters,
         ) -> Result<(Response<Body>, Video), google_youtube3::Error> {
-            println!("Opening file: {:?}", para.path);
+            info!("Opening file: {:?}", para.path);
             let stream = std::fs::File::open(&para.path)?;
-            println!("Uploading file: {:?}", para.path);
-            let insert_call = client
-                .videos()
-                .insert(para.video.clone());
-            println!("Insert call created");
-            let res = insert_call
-                .upload(stream, "video/mp4".parse().unwrap());
-            println!("Upload request");
+            info!("Uploading file: {:?}", para.path);
+
+            let insert_call = client.videos().insert(para.video.clone());
+            info!("Insert call created");
+            let upload_call = insert_call.upload_resumable(stream, "video/mp4".parse().unwrap());
+            // .upload(stream, "video/mp4".parse().unwrap());
+            info!("Upload request");
+            let res = upload_call.await;
+            info!("Upload request done");
             res
-                .await
         }
 
-        println!("Starting upload...");
+        info!("Starting upload...");
         let (response, video) =
             generic_check_backoff_youtube(&self.client, &params, upload_fn).await??;
 
@@ -235,13 +236,13 @@ impl YoutubeClient {
         // .await??;
 
         if response.status().is_success() {
-            println!("Upload successful!");
+            info!("Upload successful!");
             Ok(video)
         } else {
-            println!("Upload failed!\n=====================================\n");
-            println!("Status: {}", response.status());
-            println!("Body: {:?}", response);
-            println!("Video: {:?}", video);
+            info!("Upload failed!\n=====================================\n");
+            info!("Status: {}", response.status());
+            info!("Body: {:?}", response);
+            info!("Video: {:?}", video);
             Err(format!("got status: {}", response.status().as_u16()).into())
         }
 
@@ -256,7 +257,7 @@ impl YoutubeClient {
         // match insert {
         //     Ok(insert) => Ok(insert),
         //     Err(e) => {
-        //         println!("Error: {:?}", e);
+        //         info!("Error: {:?}", e);
         //         Err(Box::new(e))
         //     }
         // }
@@ -289,6 +290,6 @@ impl YoutubeClient {
 }
 
 pub async fn sample() -> Result<(), Box<dyn Error>> {
-    println!("Hello from the youtube lib!");
+    info!("Hello from the youtube lib!");
     Ok(())
 }
