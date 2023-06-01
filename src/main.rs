@@ -1,4 +1,4 @@
-use log::{debug, error, info, trace, warn};
+use google_youtube::prelude::*;
 use std::error::Error;
 use std::path::Path;
 

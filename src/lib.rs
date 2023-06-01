@@ -1,4 +1,5 @@
-use log::{debug, error, info, trace, warn};
+
+use crate::prelude::*;
 use std::default::Default;
 use std::error::Error;
 use std::path::{Path, PathBuf};
@@ -24,6 +25,7 @@ use youtube::{hyper, hyper_rustls::HttpsConnectorBuilder};
 
 mod auth;
 pub mod scopes;
+pub mod prelude;
 // mod config;
 
 pub struct YoutubeClient {
