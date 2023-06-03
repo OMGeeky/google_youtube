@@ -123,7 +123,7 @@ pub(crate) async fn get_authenticator(
     trace!("reading application secret");
     let app_secret = oauth2::read_application_secret(path_to_application_secret).await?;
     trace!("read application secret");
-    let method = oauth2::InstalledFlowReturnMethod::Interactive;
+
     let config = load_config();
     let mut vars: HashMap<String, String> = HashMap::new();
     let user = match user {
@@ -131,16 +131,30 @@ pub(crate) async fn get_authenticator(
         None => "unknown".to_string(),
     };
     vars.insert("user".to_string(), user.clone());
-    let persistent_path: String =
-        strfmt(&config.path_authentications, &vars).expect("Error formatting path");
+    let persistent_path = strfmt(&config.path_authentications, &vars)
+        .map_err(|e| anyhow!("Error formatting path: {}", e))?;
+    let persistent_path: &Path = Path::new(&persistent_path);
     debug!(
         "Persistent auth path for user:{} => {}",
-        user, persistent_path
+        user,
+        persistent_path.display()
     );
+    let persistent_path_parent = persistent_path
+        .parent()
+        .ok_or(anyhow!("could not get parent of path"))?;
+    if !persistent_path.exists() || persistent_path.is_dir() {
+        warn!(
+            "persistent path does not exist or is a dir: {}",
+            persistent_path.display()
+        );
+        let create_dir = std::fs::create_dir_all(persistent_path_parent);
+        warn!("result of create dir: {:?}", create_dir);
+    }
     trace!("building authenticator");
+    let method = oauth2::InstalledFlowReturnMethod::Interactive;
     let auth = oauth2::InstalledFlowAuthenticator::builder(app_secret, method)
         .flow_delegate(Box::new(CustomFlowDelegate { user }))
-        .persist_tokens_to_disk(persistent_path)
+        .persist_tokens_to_disk(persistent_path.to_path_buf())
         .build()
         .await
         //TODO: somehow get rid of this unwrap that is happening in the library
