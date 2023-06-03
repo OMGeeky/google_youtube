@@ -1,5 +1,7 @@
+use anyhow::anyhow;
 use std::collections::HashMap;
 use std::error::Error;
+use std::fmt::Debug;
 use std::future::Future;
 use std::path::Path;
 use std::pin::Pin;
@@ -13,16 +15,20 @@ use google_youtube3::oauth2::authenticator_delegate::InstalledFlowDelegate;
 use strfmt::strfmt;
 use tokio::time::sleep;
 
-use crate::auth;
+use crate::prelude::*;
 use downloader_config::{load_config, Config};
-
-struct CustomFlowDelegate {}
+struct CustomFlowDelegate {
+    user: String,
+}
 
 impl InstalledFlowDelegate for CustomFlowDelegate {
+    #[cfg_attr(feature = "tracing", tracing::instrument)]
     fn redirect_uri(&self) -> Option<&str> {
         if load_config().use_local_auth_redirect {
+            trace!("local redirect uri");
             Some("http://localhost:8080/googleapi/auth")
         } else {
+            trace!("remote redirect uri");
             Some("https://game-omgeeky.de:7443/googleapi/auth")
         }
     }
@@ -32,29 +38,37 @@ impl InstalledFlowDelegate for CustomFlowDelegate {
         url: &'a str,
         need_code: bool,
     ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>> {
-        Box::pin(present_user_url(url, need_code))
+        Box::pin(self.present_user_url(url, need_code))
     }
 }
+impl CustomFlowDelegate {
+    #[cfg_attr(feature = "tracing", tracing::instrument)]
+    async fn present_user_url(&self, url: &str, need_code: bool) -> Result<String, String> {
+        println!(
+            "Please open this URL in your browser to authenticate for {}:\n{}\n",
+            self.user, url
+        );
+        info!("Please open this URL in your browser:\n{}\n", url);
+        if need_code {
+            let conf = load_config();
 
-async fn present_user_url(url: &str, need_code: bool) -> Result<String, String> {
-    println!("Please open this URL in your browser:\n{}\n", url);
-    if need_code {
-        let conf = load_config();
-
-        let mut code = String::new();
-        if conf.use_file_auth_response {
-            code = get_auth_code(&conf).await.unwrap_or("".to_string());
+            let mut code = String::new();
+            if conf.use_file_auth_response {
+                code = get_auth_code(&conf).await.unwrap_or("".to_string());
+            } else {
+                println!("Enter the code you get after authorization here: ");
+                info!("Enter the code you get after authorization here: ");
+                std::io::stdin().read_line(&mut code).unwrap();
+            }
+            Ok(code.trim().to_string())
         } else {
-            println!("Enter the code you get after authorization here: ");
-            std::io::stdin().read_line(&mut code).unwrap();
+            println!("No code needed");
+            info!("No code needed");
+            Ok("".to_string())
         }
-        Ok(code.trim().to_string())
-    } else {
-        println!("No code needed");
-        Ok("".to_string())
     }
 }
-
+#[cfg_attr(feature = "tracing", tracing::instrument)]
 async fn get_auth_code(config: &Config) -> Result<String, Box<dyn Error>> {
     let code: String;
 
@@ -63,11 +77,13 @@ async fn get_auth_code(config: &Config) -> Result<String, Box<dyn Error>> {
     if let Err(e) = std::fs::remove_file(path) {
         if e.kind() != std::io::ErrorKind::NotFound {
             println!("Error removing file: {:?}", e);
+            error!("Error removing file: {:?}", e);
             panic!("Error removing file: {:?}", e);
         }
     }
 
     println!("Waiting for auth code in file: {}", path.display());
+    info!("Waiting for auth code in file: {}", path.display());
     loop {
         let res = std::fs::read_to_string(path); //try reading the file
         if let Ok(content) = res {
@@ -91,12 +107,22 @@ async fn get_auth_code(config: &Config) -> Result<String, Box<dyn Error>> {
     Ok(code)
 }
 
-pub(crate) async fn get_authenticator<S: Into<String>>(
+#[cfg_attr(feature = "tracing", tracing::instrument)]
+pub(crate) async fn get_authenticator(
     path_to_application_secret: String,
     scopes: &Vec<String>,
-    user: Option<S>,
-) -> Result<Authenticator<HttpsConnector<HttpConnector>>, Box<dyn Error>> {
+    user: Option<impl Into<String> + Debug>,
+) -> Result<Authenticator<HttpsConnector<HttpConnector>>> {
+    let user = user.map(|x| x.into());
+    trace!(
+        "getting authenticator for user: {:?} with scopes: {:?} and secret_path: {}",
+        user,
+        scopes,
+        path_to_application_secret
+    );
+    trace!("reading application secret");
     let app_secret = oauth2::read_application_secret(path_to_application_secret).await?;
+    trace!("read application secret");
     let method = oauth2::InstalledFlowReturnMethod::Interactive;
     let config = load_config();
     let mut vars: HashMap<String, String> = HashMap::new();
@@ -107,13 +133,23 @@ pub(crate) async fn get_authenticator<S: Into<String>>(
     vars.insert("user".to_string(), user.clone());
     let persistent_path: String =
         strfmt(&config.path_authentications, &vars).expect("Error formatting path");
-    println!("Persistent auth path for user:{} => {}", user, persistent_path);
+    debug!(
+        "Persistent auth path for user:{} => {}",
+        user, persistent_path
+    );
+    trace!("building authenticator");
     let auth = oauth2::InstalledFlowAuthenticator::builder(app_secret, method)
-        .flow_delegate(Box::new(auth::CustomFlowDelegate {}))
+        .flow_delegate(Box::new(CustomFlowDelegate { user }))
         .persist_tokens_to_disk(persistent_path)
         .build()
-        .await?; //TODO: somehow get rid of this unwrap that is happening in the library
-
-    auth.token(&scopes).await?;
+        .await
+        //TODO: somehow get rid of this unwrap that is happening in the library
+        .map_err(|e| anyhow!("got an error from the authenticator: {}", e))?;
+    trace!("got authenticator, requesting scopes");
+    let access_token = auth
+        .token(&scopes)
+        .await
+        .map_err(|e| anyhow!("could not get access to the requested scopes: {}", e))?;
+    trace!("got scope access: {:?}", access_token);
     Ok(auth)
 }

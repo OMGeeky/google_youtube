@@ -87,8 +87,7 @@ impl YoutubeClient {
         );
         let auth = auth::get_authenticator(path_to_application_secret, &scopes, user)
             .await
-            .map_err(|e| anyhow!("error: {}", e))
-            .context("could not get authenticator")?;
+            .map_err(|e| anyhow!("error while getting authenticator: {}", e))?;
         trace!("creating youtube client");
         let client: YouTube<HttpsConnector<HttpConnector>> = YouTube::new(hyper_client, auth);
 
