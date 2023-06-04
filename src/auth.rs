@@ -21,6 +21,12 @@ struct CustomFlowDelegate {
     user: String,
 }
 
+impl CustomFlowDelegate {
+    fn new(user: String) -> Self {
+        Self { user }
+    }
+}
+
 impl InstalledFlowDelegate for CustomFlowDelegate {
     #[cfg_attr(feature = "tracing", tracing::instrument)]
     fn redirect_uri(&self) -> Option<&str> {
@@ -153,7 +159,7 @@ pub(crate) async fn get_authenticator(
     trace!("building authenticator");
     let method = oauth2::InstalledFlowReturnMethod::Interactive;
     let auth = oauth2::InstalledFlowAuthenticator::builder(app_secret, method)
-        .flow_delegate(Box::new(CustomFlowDelegate { user }))
+        .flow_delegate(Box::new(CustomFlowDelegate::new(user)))
         .persist_tokens_to_disk(persistent_path.to_path_buf())
         .force_account_selection(true)
         .build()
