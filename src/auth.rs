@@ -155,6 +155,7 @@ pub(crate) async fn get_authenticator(
     let auth = oauth2::InstalledFlowAuthenticator::builder(app_secret, method)
         .flow_delegate(Box::new(CustomFlowDelegate { user }))
         .persist_tokens_to_disk(persistent_path.to_path_buf())
+        .force_account_selection(true)
         .build()
         .await
         //TODO: somehow get rid of this unwrap that is happening in the library
