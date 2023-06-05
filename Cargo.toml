@@ -1,6 +1,6 @@
 [package]
 name = "google_youtube"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -21,11 +21,11 @@ strfmt = "0.2.2"
 anyhow = "1.0"
 log = "0.4"
 simplelog = "0.12.1"
-#[patch.crates-io.yup-oauth2]
-#path = "../../Documents/GitHub/OMGeeky/yup-oauth2"
-#version = "7.1.0"
 
 tracing = { version = "0.1", optional = true }
+
+[patch.crates-io]
+yup-oauth2 = { version = "8.1.1", git = "https://github.com/OMGeeky/yup-oauth2", branch = "8.1.1" }
 
 [features]
 default = []
