@@ -40,7 +40,7 @@ impl Debug for YoutubeClient {
         f.debug_struct("YoutubeClient").finish()
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum PrivacyStatus {
     Public,
     Unlisted,
