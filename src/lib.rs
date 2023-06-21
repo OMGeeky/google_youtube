@@ -12,12 +12,12 @@ use google_youtube3::{
     api::PlaylistItemSnippet,
     api::PlaylistListResponse,
     api::PlaylistSnippet,
+    api::PlaylistStatus,
     api::ResourceId,
     api::Video,
     api::VideoSnippet,
     api::VideoStatus,
-    hyper::client::HttpConnector,
-    hyper::{Body, Response},
+    hyper::{client::HttpConnector, Body, Response},
     hyper_rustls::HttpsConnector,
 };
 #[cfg(feature = "tracing")]
@@ -136,12 +136,16 @@ impl YoutubeClient {
     }
 
     #[cfg_attr(feature = "tracing", instrument)]
-    pub async fn find_playlist_or_create_by_name(&self, name: &str) -> Result<Playlist> {
+    pub async fn find_playlist_or_create_by_name(
+        &self,
+        name: &str,
+        privacy: PrivacyStatus,
+    ) -> Result<Playlist> {
         let playlist = self.find_playlist_by_name(name).await?;
         if let Some(playlist) = playlist {
             return Ok(playlist);
         }
-        let playlist = self.create_playlist(name).await?;
+        let playlist = self.create_playlist(name, privacy).await?;
         Ok(playlist)
     }
 
@@ -290,11 +294,14 @@ impl YoutubeClient {
         // }
     }
     #[cfg_attr(feature = "tracing", instrument)]
-    async fn create_playlist(&self, name: &str) -> Result<Playlist> {
+    async fn create_playlist(&self, name: &str, privacy: PrivacyStatus) -> Result<Playlist> {
         let playlist = Playlist {
             snippet: Some(PlaylistSnippet {
                 title: Some(name.to_string()),
                 ..Default::default()
+            }),
+            status: Some(PlaylistStatus {
+                privacy_status: Some(privacy.to_string()),
             }),
             ..Default::default()
         };
